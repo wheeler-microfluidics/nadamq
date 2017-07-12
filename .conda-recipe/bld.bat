@@ -24,7 +24,14 @@ if errorlevel 1 exit 1
 
 REM Run build tests
 "%PYTHON%" -m paver build_ext --inplace
-nosetests -v nadamq\tests
+nosetests "%SRC_DIR%"\\nadamq\\tests -vv --with-xunit
+
+REM If a project directory specified, then copy results into the directory
+IF DEFINED PROJECT_DIRECTORY (
+  cp .\\nosetests.xml "%PROJECT_DIRECTORY%"\\nosetests.xml
+  dir "%PROJECT_DIRECTORY%"
+)
+
 if errorlevel 1 exit 1
 
 REM Copy Arduino library files to Conda Arduino library.
