@@ -30,8 +30,8 @@ requirements:
   run:
     - python
     - c-array-defs >=0.2.post3
-    - mingw-runtime # [win]
     - numpy
+    - mingw # [win]
 
 test:
   imports:

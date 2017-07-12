@@ -1,0 +1,72 @@
+environment:
+  GIT_REPOSITORY: http://github.com/wheeler-microfluidics/nadamq
+  PROJECT_NAME: nadamq
+  matrix:
+    - PYTHON_VERSION: 2.7
+      MINICONDA: C:\Miniconda
+      PYTHON_ARCH: "32"
+
+version: '1.0.{build}'
+
+init:
+  - "ECHO %PYTHON_VERSION% %MINICONDA%"
+
+install:
+  # Add Conda to path
+  - "set PATH=%MINICONDA%;%MINICONDA%\\Scripts;%PATH%"
+
+  # Configure Conda to operate without user input
+  - conda config --set always_yes yes --set changeps1 no
+
+  # Add the conda-force, and wheeler-microfluidics channels
+  - conda config --add channels conda-forge
+  - conda config --add channels wheeler-microfluidics
+
+  # Update conda, and install conda-build (used for building in non-root env)
+  - conda update -q conda
+  - conda install --yes conda-build anaconda-client
+
+  # Create and activate new NadaMq environment
+  - conda create --name %PROJECT_NAME%
+  - "call %MINICONDA%\\Scripts\\activate.bat %PROJECT_NAME%"
+  - conda info -a
+
+  # Get output package location
+  - FOR /F "tokens=*" %%a in ('conda-build . --output') do SET PACKAGE_LOCATION=%%a
+  - echo %PACKAGE_LOCATION%
+
+  # Set environment variable for project location (may be used in bld.bat)
+  - set "PROJECT_DIRECTORY=%cd%"
+
+  # Build package
+  - conda-build .
+
+# Handle build and tests using conda (defined in .conda-recipe/meta.yaml)
+build: false
+test_script:
+  - echo Build Complete
+
+after_test:
+  # Add repository information to info.json file (unpackage tarfile to access index.json)
+  - ps: $package_name = (( $env:PACKAGE_LOCATION -split '\\') | Select-Object -Last 1) -split '\.bz2' | Select-Object -First 1
+  - ps: 7z e $env:PACKAGE_LOCATION -tbzip2
+  - ps: 7z x $package_name -opackage -ttar
+  - ps: $json = Get-Content '.\\package\\info\\index.json' | Out-String | ConvertFrom-Json
+
+  # Add members to info.json:
+  - ps: $json | Add-Member git_repository '$env:GIT_REPOSITORY'
+
+  # repackage tarfile
+  - ps: $json | ConvertTo-JSON | % { [System.Text.RegularExpressions.Regex]::Unescape($_) } | Set-Content .\package\info\index.json
+  - 7z a %PROJECT_NAME%.tar .\package\* -ttar
+  - 7z a %PROJECT_NAME%.tar.bz2 %PROJECT_NAME%.tar -tbzip2
+
+  # Save tarfile as artifact
+  - appveyor PushArtifact %PROJECT_NAME%.tar.bz2
+
+  # Upload to Anaconda Cloud
+  # - binstar -t %BINSTAR_TOKEN% upload --force package2.tar.bz2
+
+  # Upload Test Results
+  - ps: $wc = New-Object 'System.Net.WebClient'
+  - ps: $wc.UploadFile("https://ci.appveyor.com/api/testresults/junit/$($env:APPVEYOR_JOB_ID)", (Resolve-Path .\nosetests.xml))
